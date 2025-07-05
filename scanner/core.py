@@ -360,22 +360,28 @@ class CodeScanner:
                 
             # Set defaults for missing fields
             if 'remediation' not in enhanced_data or not enhanced_data['remediation']:
-                enhanced_data['remediation'] = 'Review and fix the identified security issue based on best practices.'
+                enhanced_data['remediation'] = detailed_recommendations['default']
             
             if 'owasp_category' not in enhanced_data or not enhanced_data['owasp_category']:
                 enhanced_data['owasp_category'] = 'A06:2021 - Vulnerable and Outdated Components'
             
             if 'description' not in enhanced_data or not enhanced_data['description']:
-                enhanced_data['description'] = 'Security vulnerability detected requiring attention.'
+                enhanced_data['description'] = 'Security vulnerability detected requiring immediate attention.'
                 
         except Exception as e:
             if self.config.verbose:
                 console.print(f"[red]Error parsing enhancement: {str(e)}[/red]")
-            # Set fallback values
+            # Set fallback values with detailed recommendations
+            detailed_recommendations = {
+                'default': """1. **Security Code Review**: Conduct thorough security code review of the affected code
+2. **Input Validation**: Implement comprehensive input validation and sanitization
+3. **Security Testing**: Add security-focused unit and integration tests
+4. **Security Headers**: Implement appropriate security headers and configurations"""
+            }
             enhanced_data = {
-                'remediation': 'Review and fix the identified security issue based on best practices.',
+                'remediation': detailed_recommendations['default'],
                 'owasp_category': 'A06:2021 - Vulnerable and Outdated Components',
-                'description': 'Security vulnerability detected requiring attention.',
+                'description': 'Security vulnerability detected requiring immediate attention.',
                 'confidence': 0.8
             }
         
@@ -385,44 +391,178 @@ class CodeScanner:
         """Create a basic ScanIssue from detected data (fallback)"""
         code_snippet = self._get_code_snippet(snyk_issue['file_path'], snyk_issue['line_number'])
         
-        # Map common issue types to OWASP categories
+        # Map common issue types to OWASP categories with more specific mappings
         issue_type = snyk_issue.get('issue_type', snyk_issue.get('message', 'Security Issue'))
+        issue_message = snyk_issue.get('message', '').lower()
+        
         owasp_mapping = {
+            # Injection-related
             'injection': 'A03:2021 - Injection',
             'sql': 'A03:2021 - Injection',
             'xss': 'A03:2021 - Injection',
+            'cross-site scripting': 'A03:2021 - Injection',
+            'command injection': 'A03:2021 - Injection',
+            'code injection': 'A03:2021 - Injection',
+            'ldap injection': 'A03:2021 - Injection',
+            'xpath injection': 'A03:2021 - Injection',
+            
+            # Authentication and Access Control
             'auth': 'A07:2021 - Identification and Authentication Failures',
+            'authentication': 'A07:2021 - Identification and Authentication Failures',
             'authorization': 'A01:2021 - Broken Access Control',
+            'access control': 'A01:2021 - Broken Access Control',
+            'privilege escalation': 'A01:2021 - Broken Access Control',
+            'session': 'A07:2021 - Identification and Authentication Failures',
+            
+            # Cryptographic issues
             'crypto': 'A02:2021 - Cryptographic Failures',
-            'deserialization': 'A08:2021 - Software and Data Integrity Failures',
-            'logging': 'A09:2021 - Security Logging and Monitoring Failures',
-            'ssrf': 'A10:2021 - Server-Side Request Forgery',
+            'encryption': 'A02:2021 - Cryptographic Failures',
+            'hash': 'A02:2021 - Cryptographic Failures',
+            'certificate': 'A02:2021 - Cryptographic Failures',
+            'ssl': 'A02:2021 - Cryptographic Failures',
+            'tls': 'A02:2021 - Cryptographic Failures',
+            
+            # Security Misconfiguration
+            'configuration': 'A05:2021 - Security Misconfiguration',
+            'header': 'A05:2021 - Security Misconfiguration',
+            'x-powered-by': 'A05:2021 - Security Misconfiguration',
+            'server signature': 'A05:2021 - Security Misconfiguration',
+            'debug': 'A05:2021 - Security Misconfiguration',
+            'error message': 'A05:2021 - Security Misconfiguration',
+            
+            # Vulnerable Components
             'component': 'A06:2021 - Vulnerable and Outdated Components',
-            'configuration': 'A05:2021 - Security Misconfiguration'
+            'dependency': 'A06:2021 - Vulnerable and Outdated Components',
+            'outdated': 'A06:2021 - Vulnerable and Outdated Components',
+            'vulnerable': 'A06:2021 - Vulnerable and Outdated Components',
+            
+            # Deserialization
+            'deserialization': 'A08:2021 - Software and Data Integrity Failures',
+            'serialization': 'A08:2021 - Software and Data Integrity Failures',
+            'pickle': 'A08:2021 - Software and Data Integrity Failures',
+            
+            # Logging and Monitoring
+            'logging': 'A09:2021 - Security Logging and Monitoring Failures',
+            'monitoring': 'A09:2021 - Security Logging and Monitoring Failures',
+            'audit': 'A09:2021 - Security Logging and Monitoring Failures',
+            
+            # SSRF
+            'ssrf': 'A10:2021 - Server-Side Request Forgery',
+            'server-side request': 'A10:2021 - Server-Side Request Forgery',
+            'request forgery': 'A10:2021 - Server-Side Request Forgery',
+            
+            # Input Validation
+            'input validation': 'A03:2021 - Injection',
+            'path traversal': 'A01:2021 - Broken Access Control',
+            'directory traversal': 'A01:2021 - Broken Access Control',
+            'file inclusion': 'A01:2021 - Broken Access Control',
+            
+            # DoS and Resource Issues
+            'denial of service': 'A05:2021 - Security Misconfiguration',
+            'resource exhaustion': 'A05:2021 - Security Misconfiguration',
+            'rate limiting': 'A05:2021 - Security Misconfiguration',
         }
         
         # Try to map to OWASP category
         owasp_category = 'A06:2021 - Vulnerable and Outdated Components'  # Default
+        
+        # Check issue type and message for OWASP mapping
+        combined_text = f"{issue_type} {issue_message}".lower()
         for key, value in owasp_mapping.items():
-            if key.lower() in issue_type.lower():
+            if key.lower() in combined_text:
                 owasp_category = value
                 break
         
         # Generate appropriate recommendation based on issue type
-        recommendations = {
-            'injection': 'Use parameterized queries and input validation to prevent injection attacks.',
-            'xss': 'Implement proper output encoding and Content Security Policy (CSP) headers.',
-            'auth': 'Implement secure authentication mechanisms and session management.',
-            'crypto': 'Use strong encryption algorithms and secure key management practices.',
-            'component': 'Update dependencies to their latest secure versions.',
-            'configuration': 'Review and harden security configurations following best practices.'
+        detailed_recommendations = {
+            'injection': {
+                'sql': """1. **Use Parameterized Queries**: Replace string concatenation with parameterized queries or prepared statements:
+   ```javascript
+   // Instead of: SELECT * FROM users WHERE id = '${userId}'
+   const query = 'SELECT * FROM users WHERE id = ?';
+   db.get(query, [userId], callback);
+   ```
+2. **Input Validation**: Implement strict input validation and sanitization
+3. **Use ORM/Query Builders**: Consider using libraries like Sequelize or Prisma
+4. **Least Privilege**: Ensure database user has minimal required permissions""",
+                
+                'xss': """1. **Output Encoding**: Use proper output encoding for user data:
+   ```javascript
+   // Instead of: res.send(`<h1>Welcome ${username}</h1>`)
+   const escapeHtml = require('escape-html');
+   res.send(`<h1>Welcome ${escapeHtml(username)}</h1>`);
+   ```
+2. **Content Security Policy**: Implement CSP headers to prevent script injection
+3. **Use Template Engines**: Use secure template engines with auto-escaping (e.g., Handlebars with escape)
+4. **Validate Input**: Implement strict input validation and sanitization""",
+                
+                'command': """1. **Avoid Dynamic Command Execution**: Never execute user input as system commands:
+   ```javascript
+   // Instead of: exec(userInput)
+   // Use predefined command mapping:
+   const allowedCommands = { 'list': 'ls -la', 'date': 'date' };
+   const command = allowedCommands[userInput];
+   if (command) exec(command);
+   ```
+2. **Input Validation**: Implement strict whitelist validation for any command parameters
+3. **Use Safe Libraries**: Use safer alternatives like specific Node.js modules for file operations
+4. **Sandboxing**: If command execution is necessary, use sandboxed environments""",
+                
+                'default': """1. **Input Sanitization**: Implement comprehensive input validation and sanitization
+2. **Use Parameterized Queries**: Replace string concatenation with parameterized queries
+3. **Output Encoding**: Apply proper output encoding based on context (HTML, URL, JavaScript)
+4. **Security Headers**: Implement appropriate security headers (CSP, X-Frame-Options, etc.)"""
+            },
+            'auth': """1. **Strong Authentication**: Implement multi-factor authentication and strong password policies
+2. **Session Management**: Use secure session management with proper timeout and regeneration
+3. **Password Hashing**: Use strong hashing algorithms (bcrypt, scrypt, or Argon2)
+4. **Rate Limiting**: Implement account lockout and rate limiting for login attempts""",
+            'crypto': """1. **Use Strong Algorithms**: Replace weak algorithms with AES-256, RSA-2048+, or modern alternatives
+2. **Secure Key Management**: Use dedicated key management systems and avoid hardcoded keys
+3. **Proper Random Generation**: Use cryptographically secure random number generators
+4. **Update Libraries**: Keep cryptographic libraries updated to latest versions""",
+            'component': """1. **Update Dependencies**: Update all dependencies to latest secure versions:
+   ```bash
+   npm audit fix
+   npm update
+   ```
+2. **Monitor Vulnerabilities**: Use tools like Snyk or npm audit to monitor for new vulnerabilities
+3. **Pin Versions**: Pin dependency versions and test updates before deployment
+4. **Remove Unused Dependencies**: Remove unnecessary packages to reduce attack surface""",
+            'configuration': """1. **Security Headers**: Implement comprehensive security headers:
+   ```javascript
+   app.use(helmet()); // Use Helmet.js for Express
+   ```
+2. **Disable Debug Info**: Remove debug information and error details from production
+3. **Secure Defaults**: Use secure configuration defaults and hardening guides
+4. **Regular Security Reviews**: Conduct regular security configuration reviews""",
+            'default': """1. **Security Code Review**: Conduct thorough security code review of the affected code
+2. **Input Validation**: Implement comprehensive input validation and sanitization
+3. **Security Testing**: Add security-focused unit and integration tests
+4. **Security Headers**: Implement appropriate security headers and configurations"""
         }
         
-        recommendation = 'Review and fix the identified security issue based on best practices.'
-        for key, value in recommendations.items():
-            if key.lower() in issue_type.lower():
-                recommendation = value
-                break
+        # Determine the specific recommendation based on issue type
+        issue_type_lower = issue_type.lower()
+        recommendation = detailed_recommendations['default']
+        
+        if 'sql' in issue_type_lower or 'injection' in issue_type_lower:
+            if 'sql' in issue_type_lower:
+                recommendation = detailed_recommendations['injection']['sql']
+            elif 'xss' in issue_type_lower or 'cross-site' in issue_type_lower:
+                recommendation = detailed_recommendations['injection']['xss']
+            elif 'command' in issue_type_lower:
+                recommendation = detailed_recommendations['injection']['command']
+            else:
+                recommendation = detailed_recommendations['injection']['default']
+        elif 'auth' in issue_type_lower or 'password' in issue_type_lower:
+            recommendation = detailed_recommendations['auth']
+        elif 'crypto' in issue_type_lower or 'encrypt' in issue_type_lower:
+            recommendation = detailed_recommendations['crypto']
+        elif 'component' in issue_type_lower or 'dependency' in issue_type_lower:
+            recommendation = detailed_recommendations['component']
+        elif 'config' in issue_type_lower or 'header' in issue_type_lower:
+            recommendation = detailed_recommendations['configuration']
         
         return ScanIssue(
             file_path=snyk_issue['file_path'],

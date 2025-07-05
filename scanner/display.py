@@ -37,7 +37,7 @@ def _display_table(results: ScanResults, config: ScanConfig):
         return
     
     # Create issues table
-    table = Table(title="🔒 Security Analysis Results")
+    table = Table(title="🔒 Security Analysis Results", show_lines=True)
     table.add_column("File", style="cyan", no_wrap=True)
     table.add_column("Line", justify="right", style="magenta")
     table.add_column("Severity", style="red")
@@ -50,15 +50,21 @@ def _display_table(results: ScanResults, config: ScanConfig):
         severity_color = _get_severity_color(issue.severity)
         severity_text = Text(issue.severity.upper(), style=severity_color)
         
-        # Truncate long recommendations
+        # Use full recommendation without truncation and clean markdown syntax
         recommendation = issue.recommendation
-        if len(recommendation) > 60:
-            recommendation = recommendation[:57] + "..."
+        # Remove markdown formatting characters but preserve line breaks
+        recommendation = recommendation.replace('```', '').replace('**', '').replace('*', '').replace('`', '')
+        # Clean up extra spaces but preserve line breaks
+        lines = recommendation.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            cleaned_line = ' '.join(line.split())  # Remove extra spaces within each line
+            if cleaned_line:  # Only add non-empty lines
+                cleaned_lines.append(cleaned_line)
+        recommendation = '\n'.join(cleaned_lines)
         
-        # Format OWASP category
+        # Format OWASP category without truncation
         owasp_display = issue.owasp_category if issue.owasp_category != "Unknown" else "N/A"
-        if len(owasp_display) > 25:
-            owasp_display = owasp_display[:22] + "..."
         
         table.add_row(
             Path(issue.file_path).name,
@@ -70,6 +76,10 @@ def _display_table(results: ScanResults, config: ScanConfig):
         )
     
     console.print(table)
+    
+    # Add note about verbose mode for additional details
+    if not config.verbose:
+        console.print("\n[dim]💡 Use --verbose flag to see technical details and code snippets[/dim]")
     
     # Display detailed issues with code snippets
     if config.verbose:
@@ -120,7 +130,25 @@ def _display_detailed_issue(issue: ScanIssue, index: int):
     
     # Remediation
     console.print(f"\n[bold]🔧 Recommended Fix:[/bold]")
-    console.print(issue.recommendation)
+    # Clean and format multi-line recommendations properly
+    clean_recommendation = issue.recommendation.replace('```', '').replace('**', '').replace('`', '')
+    
+    if '\n' in clean_recommendation:
+        # Split by lines and format each line properly
+        lines = clean_recommendation.split('\n')
+        for line in lines:
+            if line.strip():  # Skip empty lines
+                # Check if line starts with a number (like "1. " or "2. ")
+                if line.strip().startswith(('1.', '2.', '3.', '4.', '5.', '6.', '7.', '8.', '9.')):
+                    console.print(f"\n[bold green]{line.strip()}[/bold green]")
+                # Check if line is a bullet point (but clean the asterisks)
+                elif line.strip().startswith(('•', '-', '*')):
+                    clean_line = line.strip().lstrip('*').strip()
+                    console.print(f"[yellow]• {clean_line}[/yellow]")
+                else:
+                    console.print(f"   {line}")
+    else:
+        console.print(f"   {clean_recommendation}")
     
     console.print("─" * 80)
 

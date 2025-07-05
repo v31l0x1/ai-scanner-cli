@@ -6,7 +6,7 @@ def get_enhanced_analysis_prompt(snyk_issue: dict, code_snippet: str) -> str:
     """Generate enhanced analysis prompt for security issue using Gemini"""
     
     return f"""
-You are an expert cybersecurity analyst. I have a security issue detected by our code analysis tool that I need you to analyze and enhance with additional context.
+You are an expert cybersecurity analyst and senior developer. I have a security issue detected by our code analysis tool that needs comprehensive analysis and detailed remediation guidance.
 
 DETECTED ISSUE DETAILS:
 - Issue Type: {snyk_issue.get('issue_type', snyk_issue.get('message', 'Unknown'))}
@@ -20,23 +20,31 @@ CODE SNIPPET:
 {code_snippet}
 ```
 
-Please provide enhanced analysis in the following EXACT format (each field on a separate line):
+Please provide enhanced analysis in the following EXACT format:
 
 TITLE: [Provide a clear, specific title for this vulnerability]
-SEVERITY: [critical/high/medium/low - reassess if needed]
+SEVERITY: [critical/high/medium/low - reassess based on exploitability and impact]
 TYPE: [Specific vulnerability type]
-DESCRIPTION: [Detailed technical explanation of the vulnerability, including why it occurs and potential impact]
-REMEDIATION: [Specific, actionable steps to fix this vulnerability with code examples if possible]
-OWASP: [Map to OWASP Top 10 category, e.g., "A01:2021 - Broken Access Control", "A03:2021 - Injection", etc.]
+DESCRIPTION: [Detailed technical explanation of the vulnerability, including why it occurs, attack vectors, and potential business impact]
+REMEDIATION: [Comprehensive fix with multiple approaches: 1) Immediate fix with code example, 2) Best practices to prevent similar issues, 3) Additional security measures. Include specific code snippets showing before/after examples when possible]
+OWASP: [Map to OWASP Top 10 2021 category with full identifier like "A03:2021 - Injection"]
 CONFIDENCE: [0.0-1.0 confidence score for this assessment]
+
+REMEDIATION REQUIREMENTS:
+- Provide at least 3 specific remediation steps
+- Include working code examples for fixes
+- Explain WHY each step prevents the vulnerability
+- Suggest additional security measures beyond the immediate fix
+- Reference relevant security libraries or frameworks
+- Include validation and testing approaches
 
 IMPORTANT: 
 - Each field must start on a new line with the field name followed by a colon
 - Provide specific OWASP Top 10 2021 categories (A01, A02, A03, etc.)
-- Give detailed remediation steps with code examples
-- Focus on actionable recommendations
+- Make remediation section comprehensive and actionable
+- Focus on practical implementation details
 
-Be precise and technical in your analysis.
+Be precise, technical, and provide implementable solutions.
 """
 
 def get_scan_prompt(file_path: str, content: str, scan_type: str) -> str:
